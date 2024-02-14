@@ -1,4 +1,5 @@
 import torch
+import torch.distributions
 from copy import deepcopy
 from network import ActorNetwork
 from network import CriticNetwork
@@ -46,7 +47,7 @@ class PPOAgent:
             if len(mini_batch) == 0:
                 break
 
-            states, actions, rewards, _, _ = map(torch.FloatTensor, zip(*mini_batch))
+            states, actions, rewards, _, next_states = map(torch.FloatTensor, zip(*mini_batch))
             actions = actions.reshape((self.__batch_size, 1))
             rewards = rewards.reshape((self.__batch_size, 1))
 
@@ -57,7 +58,11 @@ class PPOAgent:
                               reshape((self.__batch_size, 1)))
             rewards_to_go = torch.cumsum(discount_rates * rewards, dim=1)
             states_and_actions = torch.cat((states, actions), dim=1)
-            advantage_estimates = rewards_to_go - self.__critic_model(states_and_actions)
+            next_actions = self.__action_scale * self.__actor_model_copy(next_states)
+            next_states_and_actions = torch.cat((next_states, next_actions), dim=1)
+            advantage_estimates = (rewards + self.__gamma * self.__critic_model(next_states_and_actions)
+                                   - self.__critic_model(states_and_actions))
+            #advantage_estimates = rewards_to_go - self.__critic_model(states_and_actions)
             ratio_policy = new_policy / old_policy
 
             actor_loss = -torch.mean(torch.min(ratio_policy * advantage_estimates, torch.clip(ratio_policy, 1 -
